@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import scala.Tuple3;
 
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -29,7 +30,6 @@ public class SnappyDataInputFormat implements InputFormat<Row, SnappyTableInputS
     public static final String jdbcTableKey = "SN_TABLE";
     public static final String jdbcTableSql = "SN_SQL";
     private SnappydataJdbcUtil snappydataJdbc;
-    private SnappyDataConnectorHelper helper ;
     private String connectionURL;
     private String tableName;
     private String sqlText;
@@ -37,7 +37,7 @@ public class SnappyDataInputFormat implements InputFormat<Row, SnappyTableInputS
     private LinkedBlockingQueue<Row> rowBuffer = Queues.newLinkedBlockingQueue();
 
     //data
-    private boolean end;
+    private boolean end = false;
 
 
     @Override
@@ -73,13 +73,13 @@ public class SnappyDataInputFormat implements InputFormat<Row, SnappyTableInputS
     @Override
     public void open(SnappyTableInputSplit split) throws IOException {
         LOGGER.info("reading split index={}", split.index());
-        helper = new SnappyDataConnectorHelper();
+        SnappyDataConnectorHelper helper = new SnappyDataConnectorHelper();
         Properties  properties = jdbcOptions.asConnectionProperties();
         Map<String, String> poolMaps = Maps.newHashMap();
         ConnectionProperties connectionProperties = new ConnectionProperties(connectionURL, jdbcOptions.getJdbcDriverClass()
                 , (poolMaps), properties, properties, true);
 
-        helper.getConnection(connectionProperties, split);
+        Connection connection = helper.getConnection(connectionProperties, split);
 
         String txId = helper.refreshNewTransactionId();
         LOGGER.info("SnappydataInputFormat Using txId={}", txId);
@@ -88,11 +88,13 @@ public class SnappyDataInputFormat implements InputFormat<Row, SnappyTableInputS
             sqlText = "select * from "+tableName;
         }
         LOGGER.info("reading split index={}, sqlText={}", split.index(), sqlText);
-        Tuple3<Statement, ResultSet, String> queryResult = helper.executeQuery(tableName, split, sqlText, -1);
+        Tuple3<Statement, ResultSet, String> queryResult = helper.executeQuery(connection, tableName, split, sqlText, -1);
         ResultSet rs = queryResult._2();
+        int rowsCount = 0;
         try {
             int columnCount = rs.getMetaData().getColumnCount();
             while(rs.next()){
+                rowsCount ++ ;
                 Object[] rows = new Object[columnCount];
                 for (int i = 1; i <= columnCount; i++) {
                     rows[i-1] = rs.getObject(i);
@@ -100,11 +102,15 @@ public class SnappyDataInputFormat implements InputFormat<Row, SnappyTableInputS
                 rowBuffer.offer(Row.of(rows));
             }
             this.end = true;
+            LOGGER.info("found {} records in split {}", rowsCount, split.getSplitNumber());
         } catch (SQLException e) {
             e.printStackTrace();
         }
         //
-        helper.commitBeforeCloseConnection();
+        if(helper !=null){
+            helper.commitBeforeCloseConnection(connection);
+            helper.closeConnection(connection);
+        }
     }
 
     @Override
@@ -124,8 +130,8 @@ public class SnappyDataInputFormat implements InputFormat<Row, SnappyTableInputS
 
     @Override
     public void close() throws IOException {
-        if(helper !=null){
-            helper.closeConnection();
+        if(snappydataJdbc != null){
+            snappydataJdbc.commitAndClose();
         }
     }
 }

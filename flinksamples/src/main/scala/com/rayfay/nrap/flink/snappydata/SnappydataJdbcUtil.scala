@@ -9,7 +9,14 @@ class SnappydataJdbcUtil(val options: JDBCOptions) extends Serializable {
   private var getMetaDataStmt: CallableStatement = _
   private var conn: Connection = _
 
-  
+  def commitAndClose(): Unit ={
+     if(getMetaDataStmt != null){
+       getMetaDataStmt.close();
+     }
+     if(conn != null){
+       conn.close()
+     }
+  }
 
   def partitions(tableName: String) : scala.Array[SnappyTableInputSplit] = {
     runStmtWithExceptionHandling(executeMetaDataStatement(tableName));

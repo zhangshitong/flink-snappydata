@@ -14,8 +14,8 @@ import scala.util.control.NonFatal
 final class SnappyDataConnectorHelper {
 
   var useLocatorURL: Boolean = false
-  var  _conn: Connection = _;
-  def executeQuery(tableName: String,
+
+  def executeQuery(_conn: Connection, tableName: String,
                    split: SnappyTableInputSplit, query: String, relDestroyVersion: Int): (Statement, ResultSet, String) = {
     val partition = split.asInstanceOf[SnappyTableInputSplit]
     val statement = _conn.createStatement()
@@ -45,8 +45,8 @@ final class SnappyDataConnectorHelper {
                     split: SnappyTableInputSplit): Connection = {
     val urlsOfNetServerHost = split.asInstanceOf[SnappyTableInputSplit].hostList
     useLocatorURL = SnappyDataConnectorHelper.useLocatorUrl(urlsOfNetServerHost)
-    _conn = createConnection(connectionProperties, urlsOfNetServerHost)
-    _conn
+    return createConnection(connectionProperties, urlsOfNetServerHost)
+
   }
 
 
@@ -106,7 +106,7 @@ final class SnappyDataConnectorHelper {
     txId
   }
 
-  def commitBeforeCloseConnection(): Unit ={
+  def commitBeforeCloseConnection(_conn: Connection): Unit ={
     val txId = SnappyDataConnectorHelper.snapshotTxIdForRead.get()
     if(!txId.equals("null")){
       val ps = _conn.prepareStatement(s"call sys.COMMIT_SNAPSHOT_TXID(?)")
@@ -117,7 +117,7 @@ final class SnappyDataConnectorHelper {
     SnappyDataConnectorHelper.snapshotTxIdForRead.set(null)
   }
 
-  def closeConnection(): Unit ={
+  def closeConnection(_conn: Connection): Unit ={
     try {
       if(_conn != null){
         _conn.commit()
