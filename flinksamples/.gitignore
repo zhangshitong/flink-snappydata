@@ -1,0 +1,9 @@
+/target/**
+.idea
+**/*.iml
+**/target
+adf-nrap-job-client
+metastore_db
+hive
+spark-warehouse
+adf-nrap-manager/src/main/scala/UserDefinedAttr\.sc
